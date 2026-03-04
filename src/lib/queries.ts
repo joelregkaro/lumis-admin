@@ -540,35 +540,89 @@ export async function getSubscriptionStats() {
 }
 
 export async function getRevenueStats() {
-  // Since RevenueCat runs client-side and we don't have a server-side webhook yet,
-  // we surface what we can from user-level subscription signals and provide structure
-  // for when RevenueCat webhooks are connected.
-  const { data: allUsers } = await sb()
-    .from("users")
-    .select("id, created_at, onboarding_completed_at");
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const users = allUsers ?? [];
+  const [
+    allUsersRes,
+    payingUsersRes,
+    sessionDataRes,
+    recentEventsRes,
+    allEventsRes,
+    monthlyRevenueRes,
+  ] = await Promise.all([
+    sb().from("users").select("id, created_at, onboarding_completed_at"),
+    sb()
+      .from("users")
+      .select("id", { count: "exact", head: true })
+      .neq("subscription_tier", "free"),
+    sb()
+      .from("sessions")
+      .select("user_id")
+      .not("ended_at", "is", null),
+    sb()
+      .from("subscription_events")
+      .select("id, user_id, event_type, product_id, revenue_cents, currency, platform, details, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    sb()
+      .from("subscription_events")
+      .select("event_type, revenue_cents, created_at, user_id")
+      .order("created_at", { ascending: false }),
+    sb()
+      .from("subscription_events")
+      .select("revenue_cents")
+      .gte("created_at", thirtyDaysAgo.toISOString())
+      .in("event_type", ["INITIAL_PURCHASE", "RENEWAL"]),
+  ]);
+
+  const users = allUsersRes.data ?? [];
   const totalUsers = users.length;
   const onboarded = users.filter((u: any) => u.onboarding_completed_at).length;
-
-  // Session engagement tiers (proxy for conversion likelihood)
-  const { data: sessionData } = await sb()
-    .from("sessions")
-    .select("user_id")
-    .not("ended_at", "is", null);
+  const activeSubscribers = payingUsersRes.count ?? 0;
 
   const userSessions: Record<string, number> = {};
-  (sessionData ?? []).forEach((s: any) => {
+  (sessionDataRes.data ?? []).forEach((s: any) => {
     userSessions[s.user_id] = (userSessions[s.user_id] || 0) + 1;
   });
-
   const trialReady = Object.values(userSessions).filter((c) => c >= 3).length;
   const highValue = Object.values(userSessions).filter((c) => c >= 7).length;
   const power = Object.values(userSessions).filter((c) => c >= 15).length;
 
+  // MRR: sum revenue from purchases/renewals in last 30 days, normalized to monthly
+  const monthlyRevenueCents = (monthlyRevenueRes.data ?? [])
+    .reduce((sum: number, e: any) => sum + (e.revenue_cents || 0), 0);
+
+  // Total lifetime revenue from all events
+  const allEvents = allEventsRes.data ?? [];
+  const totalRevenueCents = allEvents
+    .filter((e: any) => ["INITIAL_PURCHASE", "RENEWAL"].includes(e.event_type))
+    .reduce((sum: number, e: any) => sum + (e.revenue_cents || 0), 0);
+
+  // Churn: count CANCELLATION + EXPIRATION events in last 30 days
+  const churnEvents = allEvents.filter(
+    (e: any) =>
+      ["CANCELLATION", "EXPIRATION"].includes(e.event_type) &&
+      new Date(e.created_at) >= thirtyDaysAgo
+  ).length;
+
+  // New subscriptions in last 30 days
+  const newSubscriptions = allEvents.filter(
+    (e: any) =>
+      e.event_type === "INITIAL_PURCHASE" &&
+      new Date(e.created_at) >= thirtyDaysAgo
+  ).length;
+
   return {
     totalUsers,
     onboarded,
+    activeSubscribers,
+    mrr: monthlyRevenueCents,
+    totalRevenueCents,
+    churnEvents,
+    newSubscriptions,
+    recentEvents: recentEventsRes.data ?? [],
     conversionFunnel: [
       { name: "All Users", value: totalUsers },
       { name: "Onboarded", value: onboarded },
