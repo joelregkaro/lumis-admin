@@ -15,6 +15,10 @@ jobs:
       DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
       DROPLET_USER: ${{ secrets.DROPLET_USER }}
       DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      REVENUECAT_WEBHOOK_KEY: ${{ secrets.REVENUECAT_WEBHOOK_KEY }}
 
     steps:
       - name: Configure SSH
@@ -30,6 +34,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "Deploying lumis-admin to $DROPLET_HOST"
+          SUPABASE_URL_B64="$(printf '%s' "$SUPABASE_URL" | base64 | tr -d '\n')"
+          SUPABASE_SERVICE_ROLE_KEY_B64="$(printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | base64 | tr -d '\n')"
+          ADMIN_PASSWORD_B64="$(printf '%s' "$ADMIN_PASSWORD" | base64 | tr -d '\n')"
+          REVENUECAT_WEBHOOK_KEY_B64="$(printf '%s' "$REVENUECAT_WEBHOOK_KEY" | base64 | tr -d '\n')"
           ssh -p 22 "$DROPLET_USER@$DROPLET_HOST" <<EOF
           set -euo pipefail
           echo "Connected to server"
@@ -45,6 +53,11 @@ jobs:
           git pull --ff-only origin main
           echo "Installing dependencies"
           npm install
+          export NODE_ENV=production
+          export SUPABASE_URL="$(printf '%s' '$SUPABASE_URL_B64' | base64 --decode)"
+          export SUPABASE_SERVICE_ROLE_KEY="$(printf '%s' '$SUPABASE_SERVICE_ROLE_KEY_B64' | base64 --decode)"
+          export ADMIN_PASSWORD="$(printf '%s' '$ADMIN_PASSWORD_B64' | base64 --decode)"
+          export REVENUECAT_WEBHOOK_KEY="$(printf '%s' '$REVENUECAT_WEBHOOK_KEY_B64' | base64 --decode)"
           echo "Building application"
           npm run build
 
