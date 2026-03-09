@@ -10,7 +10,9 @@ const NAV = [
   { href: "/growth", label: "Growth", icon: "🚀" },
   { href: "/revenue", label: "Revenue", icon: "💰" },
   { href: "/wellbeing", label: "Wellbeing", icon: "💜" },
+  { href: "/events", label: "Events", icon: "🔔" },
   { href: "/feed", label: "Live Feed", icon: "⚡" },
+  { href: "/prompt-lab", label: "Prompt Lab", icon: "🧪" },
 ];
 
 export default function Sidebar() {

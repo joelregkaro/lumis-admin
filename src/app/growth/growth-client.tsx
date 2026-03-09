@@ -22,9 +22,13 @@ interface Props {
     notificationsByType: Record<string, number>;
     usersByWeek: { week: string; count: number }[];
   };
+  eventData?: {
+    signUpMethods: { method: string; count: number }[];
+    onboardingSteps: Record<string, number>;
+  };
 }
 
-export default function GrowthClient({ stats }: Props) {
+export default function GrowthClient({ stats, eventData }: Props) {
   const s1Rate = stats.totalUsers > 0 ? Math.round((stats.session1 / stats.totalUsers) * 100) : 0;
   const s3Rate = stats.totalUsers > 0 ? Math.round((stats.session3 / stats.totalUsers) * 100) : 0;
   const s7Rate = stats.totalUsers > 0 ? Math.round((stats.session7 / stats.totalUsers) * 100) : 0;
@@ -119,6 +123,33 @@ export default function GrowthClient({ stats }: Props) {
       </div>
 
       <ChartArea data={stats.usersByWeek} xKey="week" yKey="count" title="New Users by Week" color="#10b981" />
+
+      {eventData && eventData.signUpMethods.length > 0 && (
+        <div>
+          <h2 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wider">Sign-up Methods (from Events)</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {eventData.signUpMethods.map((m) => (
+              <StatCard key={m.method} title={m.method} value={m.count} color="purple" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {eventData && Object.keys(eventData.onboardingSteps).length > 0 && (
+        <ChartBar
+          data={Object.entries(eventData.onboardingSteps)
+            .map(([step, count]) => ({ step: `Step ${step}`, count }))
+            .sort((a, b) => {
+              const aNum = parseInt(a.step.replace("Step ", ""));
+              const bNum = parseInt(b.step.replace("Step ", ""));
+              return aNum - bNum;
+            })}
+          xKey="step"
+          yKey="count"
+          title="Onboarding Step Completion (from Events)"
+          color="#f59e0b"
+        />
+      )}
     </div>
   );
 }

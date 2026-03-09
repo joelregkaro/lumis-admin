@@ -502,6 +502,14 @@ export async function getWellbeingStats() {
   return { moodTrend, distribution, domainAvgs, totalEntries: moods.length };
 }
 
+export async function getPromptVersions() {
+  const { data } = await sb()
+    .from("prompt_versions")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
 export async function getRecentActivity(limit = 50) {
   const [auditRes, sessionsRes, usersRes] = await Promise.all([
     sb().from("audit_log").select("action, details, user_id, created_at").order("created_at", { ascending: false }).limit(limit),
@@ -536,6 +544,93 @@ export async function getSubscriptionStats() {
     freeUsers: freeRes.count ?? 0,
     totalRevenueCents: totalRevenue,
     recentEvents: eventsRes.data ?? [],
+  };
+}
+
+export async function getEventStats(days = 30) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceISO = since.toISOString();
+
+  const { data: events } = await sb()
+    .from("app_events")
+    .select("event_name, properties, screen, created_at, user_id")
+    .gte("created_at", sinceISO)
+    .order("created_at", { ascending: false })
+    .limit(5000);
+
+  const rows = events ?? [];
+
+  const countsByName: Record<string, number> = {};
+  const countsByScreen: Record<string, number> = {};
+  const countsByDay: Record<string, number> = {};
+  const uniqueUsersByEvent: Record<string, Set<string>> = {};
+
+  for (const e of rows) {
+    countsByName[e.event_name] = (countsByName[e.event_name] || 0) + 1;
+
+    if (!uniqueUsersByEvent[e.event_name]) uniqueUsersByEvent[e.event_name] = new Set();
+    uniqueUsersByEvent[e.event_name].add(e.user_id);
+
+    if (e.screen) {
+      countsByScreen[e.screen] = (countsByScreen[e.screen] || 0) + 1;
+    }
+
+    const day = e.created_at.split("T")[0];
+    countsByDay[day] = (countsByDay[day] || 0) + 1;
+  }
+
+  const topEvents = Object.entries(countsByName)
+    .map(([name, count]) => ({ name, count, users: uniqueUsersByEvent[name]?.size ?? 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  const screenBreakdown = Object.entries(countsByScreen)
+    .map(([screen, count]) => ({ screen, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const timeline = Object.entries(countsByDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  const signUpMethods: Record<string, number> = {};
+  const signInMethods: Record<string, number> = {};
+  rows.forEach((e) => {
+    if (e.event_name === "sign_up" && e.properties?.method) {
+      signUpMethods[e.properties.method] = (signUpMethods[e.properties.method] || 0) + 1;
+    }
+    if (e.event_name === "sign_in" && e.properties?.method) {
+      signInMethods[e.properties.method] = (signInMethods[e.properties.method] || 0) + 1;
+    }
+  });
+
+  const purchaseEvents = rows.filter((e) => e.event_name.startsWith("purchase_"));
+  const paywallViews = rows.filter((e) => e.event_name === "paywall_viewed").length;
+  const purchaseStarted = purchaseEvents.filter((e) => e.event_name === "purchase_started").length;
+  const purchaseCompleted = purchaseEvents.filter((e) => e.event_name === "purchase_completed").length;
+  const purchaseFailed = purchaseEvents.filter((e) => e.event_name === "purchase_failed").length;
+
+  return {
+    totalEvents: rows.length,
+    uniqueUsers: new Set(rows.map((e) => e.user_id)).size,
+    topEvents,
+    screenBreakdown,
+    timeline,
+    recentEvents: rows.slice(0, 100),
+    signUpMethods: Object.entries(signUpMethods).map(([method, count]) => ({ method, count })),
+    signInMethods: Object.entries(signInMethods).map(([method, count]) => ({ method, count })),
+    purchaseFunnel: {
+      paywallViews,
+      purchaseStarted,
+      purchaseCompleted,
+      purchaseFailed,
+    },
+    onboardingSteps: rows
+      .filter((e) => e.event_name === "onboarding_step_completed")
+      .reduce((acc: Record<string, number>, e) => {
+        const step = e.properties?.step ?? "unknown";
+        acc[step] = (acc[step] || 0) + 1;
+        return acc;
+      }, {}),
   };
 }
 

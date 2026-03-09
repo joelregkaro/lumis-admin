@@ -55,7 +55,14 @@ const EVENT_LABELS: Record<string, { label: string; color: string }> = {
   TRANSFER: { label: "Transfer", color: "text-zinc-400" },
 };
 
-export default function RevenueClient({ stats }: { stats: RevenueStats }) {
+interface PurchaseFunnel {
+  paywallViews: number;
+  purchaseStarted: number;
+  purchaseCompleted: number;
+  purchaseFailed: number;
+}
+
+export default function RevenueClient({ stats, purchaseFunnel }: { stats: RevenueStats; purchaseFunnel?: PurchaseFunnel }) {
   const trialRate = stats.totalUsers > 0
     ? Math.round((stats.trialReady / stats.totalUsers) * 100) : 0;
   const highValueRate = stats.totalUsers > 0
@@ -218,6 +225,21 @@ export default function RevenueClient({ stats }: { stats: RevenueStats }) {
         <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">Conversion Funnel</p>
         <ChartBar data={stats.conversionFunnel} xKey="name" yKey="value" title="User Journey Funnel" color="#8b5cf6" height={350} />
       </div>
+
+      {/* In-App Purchase Funnel (from Events) */}
+      {purchaseFunnel && purchaseFunnel.paywallViews > 0 && (
+        <div>
+          <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">In-App Purchase Funnel (from Events)</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <StatCard title="Paywall Views" value={purchaseFunnel.paywallViews} color="purple" />
+            <StatCard title="Started" value={purchaseFunnel.purchaseStarted} color="amber"
+              subtitle={`${purchaseFunnel.paywallViews > 0 ? ((purchaseFunnel.purchaseStarted / purchaseFunnel.paywallViews) * 100).toFixed(1) : 0}% of views`} />
+            <StatCard title="Completed" value={purchaseFunnel.purchaseCompleted} color="green"
+              subtitle={`${purchaseFunnel.purchaseStarted > 0 ? ((purchaseFunnel.purchaseCompleted / purchaseFunnel.purchaseStarted) * 100).toFixed(1) : 0}% of started`} />
+            <StatCard title="Failed" value={purchaseFunnel.purchaseFailed} color="red" />
+          </div>
+        </div>
+      )}
 
       {/* Pricing structure reference */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 space-y-3">

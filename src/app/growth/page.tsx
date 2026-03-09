@@ -1,9 +1,17 @@
-import { getGrowthStats } from "@/lib/queries";
+import { getGrowthStats, getEventStats } from "@/lib/queries";
 import GrowthClient from "./growth-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function GrowthPage() {
-  const stats = await getGrowthStats();
-  return <GrowthClient stats={stats} />;
+  const [stats, eventStats] = await Promise.all([getGrowthStats(), getEventStats()]);
+  return (
+    <GrowthClient
+      stats={stats}
+      eventData={{
+        signUpMethods: eventStats.signUpMethods,
+        onboardingSteps: eventStats.onboardingSteps,
+      }}
+    />
+  );
 }
